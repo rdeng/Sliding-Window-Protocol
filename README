@@ -1,0 +1,93 @@
+IMPORTANT
+
+All input.* and communicate.* files will be overwritten when we grade Lab 1.
+Please refer to the website under the projects section for further instructions.
+http://cseweb.ucsd.edu/classes/wi17/cse123-a/project.html
+
+Program Description:
+
+struct Frame_t
+{
+    unsigned char sendId, recvId;
+    unsigned char seqNum, ackNum;
+    char flag;
+    char data[FRAME_PAYLOAD_SIZE];
+    unsigned char crc;
+};
+typedef struct Frame_t Frame;
+
+Frame:
+There are 7 fields in a frame with 64 bytes. The whole frame is 64 bytes long and payload size is 58 bytes. There are two unsigned char named sendId and recvId. They are used to store sender id and receiver id correspondingly. And another two unsigned char named seqNum and ackNum to store sequence number and acknowledge number. There's a char named flag. It is to indicate whether the frame is an ack or not. If the flag field is 1, then it is an ack, otherwise not. The data field is used to store payload and it is 58 bytes long. The last field is unsigned char used to store crc for error detecting.
+
+struct Receiver_t
+{
+    //DO NOT CHANGE:
+    // 1) buffer_mutex
+    // 2) buffer_cv
+    // 3) input_framelist_head
+    // 4) recv_id
+    pthread_mutex_t buffer_mutex;
+    pthread_cond_t buffer_cv;
+    LLnode * input_framelist_head;
+    
+    int recv_id;
+
+    /* receiver side state: */
+    unsigned char NFE; /* seqno of next frame expected */
+    struct recvQ_slot {
+        bool received; /* is msg valid? */
+        Frame* msg;
+    } recvQ[8];
+};
+
+Receiver:
+I add two new fields to receiver struct. NFE is an unsigned char used to store the next expected frame number. And recvQ is a buffer array. It has 8 recvQ_slot inside. Each recvQ_slot is a struct with a boolean and frame inside. The boolean is used to indicate whether the buffer has received this frame. And the frame field named msg is used to store the buffered frame. It is used to print out the received message to achieve accumulative purpose.
+
+struct Sender_t
+{
+    //DO NOT CHANGE:
+    // 1) buffer_mutex
+    // 2) buffer_cv
+    // 3) input_cmdlist_head
+    // 4) input_framelist_head
+    // 5) send_id
+    pthread_mutex_t buffer_mutex;
+    pthread_cond_t buffer_cv;    
+    LLnode * input_cmdlist_head;
+    LLnode * input_framelist_head;
+    int send_id;
+
+    /* sender side state: */
+    unsigned char LAR; /* seqno of last ACK received */
+    unsigned char LFS; /* last frame sent */
+    
+    int seqCount; // sequence number counter
+    int sendWindowNotFull;
+
+    struct sendQ_slot {
+        struct timeval* timeout; /* event associated with send-timeout */
+        Frame* msg;
+        int used;
+    } sendQ[8];
+};
+
+Sender:
+I add four useful fields to sender struct. There are two unsigned chars. LAR is to recore the sequence number of the last ACK received. LFS is the last frame sent. It can also used to initialize the frame sequence number. SendWindowNotFull is an int to indicate whether or not sliding window is full. It starts to be 8. When the window is full, this field decreases down to 0. And sendQ is a buffer array. It has 8 sendQ_slot inside. Each sendQ_slot is a struct with an int, a frame and a timeval object in it. The int is used to indicate whether the slot is being used. Frame msg is used to store the data and timeval is to calculate the time out.
+
+
+
+Method Descriptions:
+
+Receiver.c:
+handle_incoming_msgs:
+Dequeue the char array containing data from list, then convert it to frame. If the frame is not corrupted and frame is for that specific receiver, then store tqhe frame in buffer, if all the frames before has been received, just print out the message, otherwise wait for previous sequence number frames. Flip the flag from 0 to 1 and use the same frame as ack and send it back.
+
+Sender.c:
+handle_incoming_acks:
+Dequeue the char array containing ack from the list, then convert it to frame. If the frame is not corrupted and it is for that specific sender, open the window for new frames in.
+
+handle_input_cmds:
+Dequeue the cmd from list and create a new frame via msg in cmd. If the msg is too big, then partition it. Check the window size to make sure there's still window available. Set the timeout object and then send to frame out.
+
+handle_timeout_frames:
+Check each frames at sending in the buffer, if it is overtime, resend the frame and reset the time.
